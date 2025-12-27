@@ -1,68 +1,118 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
+
 import { listProducts } from "@lib/data/products"
 import { getRegion } from "@lib/data/regions"
 import ProductTemplate from "@modules/products/templates"
+
 import { HttpTypes } from "@medusajs/types"
 
-// 1. Force dynamic rendering (No build-time fetching)
-export const dynamic = 'force-dynamic'
+// Force dynamic rendering (no build-time API calls)
+export const dynamic = "force-dynamic"
 
 type Props = {
-  params: Promise<{ countryCode: string; handle: string }>
-  searchParams: Promise<{ v_id?: string }>
+  params: {
+    countryCode: string
+    handle: string
+  }
+  searchParams: {
+    v_id?: string
+  }
 }
 
-function getImagesForVariant(product: HttpTypes.StoreProduct, selectedVariantId?: string) {
+/**
+ * Resolve images for selected variant (Storefront v2 compatible)
+ */
+function getImagesForVariant(
+  product: HttpTypes.StoreProduct,
+  selectedVariantId?: string
+): HttpTypes.StoreProductImage[] {
   if (!product?.images?.length) return []
-  if (!selectedVariantId || !product.variants) return product.images
 
-  const variant = product.variants.find((v) => v.id === selectedVariantId)
-  // Medusa 2.0 variant images check
-  if (!variant || !("images" in variant) || !Array.isArray(variant.images) || !variant.images.length) {
+  if (!selectedVariantId || !product.variants) {
     return product.images
   }
 
-  const imageIdsMap = new Map(variant.images.map((i: any) => [i.id, true]))
-  return product.images.filter((i) => imageIdsMap.has(i.id))
+  const variant = product.variants.find(
+    (v) => v.id === selectedVariantId
+  )
+
+  if (
+    !variant ||
+    !("images" in variant) ||
+    !Array.isArray((variant as any).images) ||
+    !(variant as any).images.length
+  ) {
+    return product.images
+  }
+
+  const imageIds = new Set(
+    (variant as any).images.map((i: any) => i.id)
+  )
+
+  return product.images.filter((img) => imageIds.has(img.id))
 }
 
-export async function generateMetadata(props: Props): Promise<Metadata> {
-  const { countryCode, handle } = await props.params
+/**
+ * Metadata (runs dynamically)
+ */
+export async function generateMetadata({
+  params,
+}: Props): Promise<Metadata> {
+  const { countryCode, handle } = params
+
   const product = await listProducts({
     countryCode,
     queryParams: { handle },
-  }).then((res: any) => res.response?.products?.[0] || res.products?.[0])
+  }).then(
+    (res: any) =>
+      res?.response?.products?.[0] ??
+      res?.products?.[0]
+  )
 
-  if (!product) return { title: "Product Not Found" }
+  if (!product) {
+    return { title: "Product Not Found" }
+  }
 
   return {
-    title: `${product.title} | Medusa Store`,
-    openGraph: { images: product.thumbnail ? [product.thumbnail] : [] },
+    title: `${product.title} | Store`,
+    openGraph: {
+      images: product.thumbnail ? [product.thumbnail] : [],
+    },
   }
 }
 
-export default async function ProductPage(props: Props) {
-  const { countryCode, handle } = await props.params
-  const { v_id: selectedVariantId } = await props.searchParams
-  
-  const [region, pricedProduct] = await Promise.all([
+/**
+ * Product page
+ */
+export default async function ProductPage({
+  params,
+  searchParams,
+}: Props) {
+  const { countryCode, handle } = params
+  const { v_id } = searchParams
+
+  const [region, product] = await Promise.all([
     getRegion(countryCode),
     listProducts({
       countryCode,
       queryParams: { handle },
-    }).then((res: any) => res.response?.products?.[0] || res.products?.[0])
+    }).then(
+      (res: any) =>
+        res?.response?.products?.[0] ??
+        res?.products?.[0]
+    ),
   ])
 
-  if (!region || !pricedProduct) {
+  if (!region || !product) {
     notFound()
   }
 
-  const images = getImagesForVariant(pricedProduct, selectedVariantId)
+  const images = getImagesForVariant(product, v_id)
 
   return (
     <ProductTemplate
-      product={pricedProduct}
+      product={product}
       region={region}
       countryCode={countryCode}
       images={images}
