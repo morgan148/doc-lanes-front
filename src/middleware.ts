@@ -24,9 +24,13 @@ async function getRegionMap(cacheId: string) {
     regionMapUpdated < Date.now() - 3600 * 1000
   ) {
     // Fetch regions from Medusa. We can't use the JS client here because middleware is running on Edge and the client needs a Node environment.
+    if (!PUBLISHABLE_API_KEY) {
+      console.warn("Middleware.ts: NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY is not defined.")
+    }
+    
     const { regions } = await fetch(`${BACKEND_URL}/store/regions`, {
       headers: {
-        "x-publishable-api-key": PUBLISHABLE_API_KEY!,
+        "x-publishable-api-key": PUBLISHABLE_API_KEY || "",
       },
       next: {
         revalidate: 3600,
@@ -69,7 +73,7 @@ async function getRegionMap(cacheId: string) {
  */
 async function getCountryCode(
   request: NextRequest,
-  regionMap: Map<string, HttpTypes.StoreRegion | number>
+  regionMap: Map<string, HttpTypes.StoreRegion>
 ) {
   try {
     let countryCode
