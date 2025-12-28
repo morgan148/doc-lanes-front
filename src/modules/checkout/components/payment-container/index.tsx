@@ -11,12 +11,25 @@ import { StripeCardElementOptions } from "@stripe/stripe-js"
 import PaymentTest from "../payment-test"
 import { StripeContext } from "../payment-wrapper/stripe-wrapper"
 
+// 👇 Your tokenizer component (based on where you said you created it)
+import FluidPayTokenizer from "@modules/checkout/components/fluidpay-tokenizer/fluidpay-tokenizer"
+
 type PaymentContainerProps = {
   paymentProviderId: string
   selectedPaymentOptionId: string | null
   disabled?: boolean
   paymentInfoMap: Record<string, { title: string; icon: JSX.Element }>
   children?: React.ReactNode
+
+  /**
+   * OPTIONAL: If provided, PaymentContainer can render the FluidPay tokenizer UI
+   * directly when paymentProviderId === "fluidpay".
+   *
+   * If you don’t pass these props, nothing breaks.
+   */
+  onFluidPayToken?: (token: string) => void
+  fluidPayReady?: boolean
+  fluidPayError?: string | null
 }
 
 const PaymentContainer: React.FC<PaymentContainerProps> = ({
@@ -25,8 +38,13 @@ const PaymentContainer: React.FC<PaymentContainerProps> = ({
   paymentInfoMap,
   disabled = false,
   children,
+  onFluidPayToken,
+  fluidPayReady,
+  fluidPayError,
 }) => {
   const isDevelopment = process.env.NODE_ENV === "development"
+  const isSelected = selectedPaymentOptionId === paymentProviderId
+  const isFluidPay = paymentProviderId === "fluidpay"
 
   return (
     <RadioGroupOption
@@ -36,14 +54,13 @@ const PaymentContainer: React.FC<PaymentContainerProps> = ({
       className={clx(
         "flex flex-col gap-y-2 text-small-regular cursor-pointer py-4 border rounded-rounded px-8 mb-2 hover:shadow-borders-interactive-with-active",
         {
-          "border-ui-border-interactive":
-            selectedPaymentOptionId === paymentProviderId,
+          "border-ui-border-interactive": isSelected,
         }
       )}
     >
       <div className="flex items-center justify-between ">
         <div className="flex items-center gap-x-4">
-          <Radio checked={selectedPaymentOptionId === paymentProviderId} />
+          <Radio checked={isSelected} />
           <Text className="text-base-regular">
             {paymentInfoMap[paymentProviderId]?.title || paymentProviderId}
           </Text>
@@ -55,10 +72,38 @@ const PaymentContainer: React.FC<PaymentContainerProps> = ({
           {paymentInfoMap[paymentProviderId]?.icon}
         </span>
       </div>
+
       {isManual(paymentProviderId) && isDevelopment && (
         <PaymentTest className="small:hidden text-[10px]" />
       )}
+
+      {/* Existing children render (Stripe uses this pattern) */}
       {children}
+
+      {/* OPTIONAL inline FluidPay UI (safe + does nothing unless you pass handler) */}
+      {isFluidPay && isSelected && onFluidPayToken && (
+        <div className="my-4 transition-all duration-150 ease-in-out">
+          <Text className="txt-medium-plus text-ui-fg-base mb-1">
+            Enter your card details:
+          </Text>
+
+          <FluidPayTokenizer
+            onToken={(token) => onFluidPayToken(token)}
+          />
+
+          {fluidPayReady === false && (
+            <Text className="text-ui-fg-subtle mt-2">
+              Loading payment form...
+            </Text>
+          )}
+
+          {fluidPayError && (
+            <Text className="text-ui-fg-error mt-2">
+              {fluidPayError}
+            </Text>
+          )}
+        </div>
+      )}
     </RadioGroupOption>
   )
 }
@@ -124,6 +169,57 @@ export const StripeCardContainer = ({
         ) : (
           <SkeletonCardDetails />
         ))}
+    </PaymentContainer>
+  )
+}
+
+/**
+ * FluidPay version of StripeCardContainer.
+ * Use this the same way StripeCardContainer is used, but for providerId === "fluidpay".
+ */
+export const FluidPayTokenizerContainer = ({
+  paymentProviderId,
+  selectedPaymentOptionId,
+  paymentInfoMap,
+  disabled = false,
+  onToken,
+  ready = true,
+  error = null,
+}: Omit<PaymentContainerProps, "children"> & {
+  onToken: (token: string) => void
+  ready?: boolean
+  error?: string | null
+}) => {
+  const isSelected = selectedPaymentOptionId === paymentProviderId
+
+  return (
+    <PaymentContainer
+      paymentProviderId={paymentProviderId}
+      selectedPaymentOptionId={selectedPaymentOptionId}
+      paymentInfoMap={paymentInfoMap}
+      disabled={disabled}
+    >
+      {isSelected && (
+        <div className="my-4 transition-all duration-150 ease-in-out">
+          <Text className="txt-medium-plus text-ui-fg-base mb-1">
+            Enter your card details:
+          </Text>
+
+          <FluidPayTokenizer onToken={onToken} />
+
+          {!ready && (
+            <Text className="text-ui-fg-subtle mt-2">
+              Loading payment form...
+            </Text>
+          )}
+
+          {error && (
+            <Text className="text-ui-fg-error mt-2">
+              {error}
+            </Text>
+          )}
+        </div>
+      )}
     </PaymentContainer>
   )
 }
